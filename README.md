@@ -8,7 +8,9 @@ Internal **CSOP Jira** dashboard: open-issue metrics, charts, and top issues. De
 
 ## For teammates
 
-**Full deploy, GitHub, and troubleshooting guide:** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+**Deployment guide (formatted Markdown):** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)  
+
+Open in GitHub, VS Code preview, or any Markdown viewer for headings, tables, and callouts.
 
 ## Quick start (already onboarded)
 

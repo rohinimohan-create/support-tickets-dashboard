@@ -1,179 +1,237 @@
 # Support Tickets Dashboard — Deployment Guide
 
-Internal CSOP Jira dashboard deployed to Unity **Tessen** (Kubernetes on GCP). This document covers setup, deploy, GitHub, and troubleshooting based on the team’s first deployment (May 2026).
+> **Audience:** Teammates deploying or maintaining the CSOP Jira dashboard on Unity Tessen.  
+> **Last updated:** May 2026 · **Environment documented:** Tessen **test**
 
-**Live (test):** https://support-tickets-dashboard.test.app.tessen.unity.com  
-**GitHub:** https://github.com/rohinimohan-create/support-tickets-dashboard  
-**Help channel:** `#devs-tessen`
+---
+
+## At a glance
+
+| | |
+|---|---|
+| **Live dashboard (test)** | https://support-tickets-dashboard.test.app.tessen.unity.com |
+| **GitHub** | https://github.com/rohinimohan-create/support-tickets-dashboard |
+| **Tessen namespace** | `csops-ops-csops-tickets-test-dashboard` |
+| **Tessen team** | `csops-ops` |
+| **Support** | Slack `#devs-tessen` |
 
 ---
 
 ## Table of contents
 
-1. [What this project is](#what-this-project-is)
-2. [Architecture](#architecture)
-3. [Prerequisites](#prerequisites)
-4. [Naming reference](#naming-reference)
-5. [First-time setup](#first-time-setup)
-6. [Jira authentication](#jira-authentication)
-7. [Manual deploy to test](#manual-deploy-to-test)
-8. [GitHub repository](#github-repository)
-9. [CI/CD (GitHub Actions)](#cicd-github-actions)
-10. [Day-to-day commands](#day-to-day-commands)
-11. [Troubleshooting](#troubleshooting)
+- [What this project is](#what-this-project-is)
+- [How deployment works](#how-deployment-works)
+- [Before you start](#before-you-start)
+- [Naming reference](#naming-reference)
+- [First-time setup](#first-time-setup)
+- [Jira authentication](#jira-authentication)
+- [Deploy to test (step by step)](#deploy-to-test-step-by-step)
+- [GitHub](#github)
+- [CI/CD with GitHub Actions](#cicd-with-github-actions)
+- [Commands cheat sheet](#commands-cheat-sheet)
+- [Troubleshooting](#troubleshooting)
+- [Security](#security)
+- [Official Tessen links](#official-tessen-links)
 
 ---
 
 ## What this project is
 
-- **Node.js / Express** app (`server.js`) that queries **Jira** (CSOP project) and serves a web UI (`views/index.ejs`).
-- Packaged as a **Docker** image and deployed with **Tessen** using `docker-compose.yml`.
-- No Kubernetes knowledge required for routine deploys — Tessen maps Compose → GKE (ingress, TLS, secrets, monitoring).
+### Application
+
+- **Stack:** Node.js, Express, EJS (`server.js`, `views/index.ejs`)
+- **Data:** Jira REST API — CSOP project metrics, charts, open issues
+- **Port:** `8080` inside the container
+
+### Platform
+
+- **Docker** image → Unity Artifact Registry  
+- **Tessen** reads `docker-compose.yml` and deploys to shared GKE (**test** / **stg** / **prd**)
+- You do **not** manage Kubernetes YAML for normal deploys
+
+### Important rule
+
+> **Local `.env` is not used in the cluster.**  
+> The running pod gets config from **Tessen namespace secrets** and deploy flags (`-E`).  
+> After changing `.env`, you must run `tessen namespace secrets add` and **redeploy**.
 
 ---
 
-## Architecture
+## How deployment works
+
+### Flow
 
 ```
-Developer machine / GitHub Actions
-    │
-    ├─ docker build + push  →  Artifact Registry
-    │     europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/
-    │       <namespace>/support-tickets-dashboard:<tag>
-    │
-    └─ tessen deployment up  →  Tessen (test / stg / prd GKE)
-              │
-              ├─ Namespace, ingress, TLS
-              ├─ Secrets from Vault (JIRA_API_TOKEN, etc.)
-              └─ Pod runs Node app on port 8080
+Your laptop or GitHub Actions
+        │
+        ├─► docker build + docker push
+        │       └── europe-docker.pkg.dev/.../support-tickets-dashboard:<tag>
+        │
+        └─► tessen deployment up
+                └── Tessen → GKE (ingress, TLS, secrets, pods)
 ```
 
-**Important:** `.env` on your laptop is **not** used in the cluster. Runtime config comes from **Tessen namespace secrets** and deploy flags (`-E`).
+### Two scripts (repo root)
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/build-and-push.sh` | Build `linux/amd64` image and **push** to registry |
+| `scripts/tessen-deploy.sh` | Run `tessen deployment up` + `status` |
+
+> **Common mistake:** Running deploy without push → `ImagePullBackOff` because `:local` (or your tag) does not exist in the registry.
 
 ---
 
-## Prerequisites
+## Before you start
 
-| Requirement | Notes |
+### Tools
+
+| Tool | How to get it |
+|------|----------------|
+| Tessen CLI | `brew install --cask tessen` |
+| Docker Desktop | Running; `docker ps` works |
+| Git | Clone / push to GitHub |
+| VPN | Unity network (Jira + internal URLs) |
+
+### Access
+
+| Requirement | Detail |
 |-------------|--------|
-| **Tessen CLI** | `brew install --cask tessen` or [Tessen releases](https://github.com/Unity-Technologies/tessen/releases) |
-| **Docker Desktop** | Running; `docker ps` works |
-| **Tessen login** | `tessen auth login` |
-| **Team membership** | Must be on Tessen team **`csops-ops`** |
-| **VPN** | Unity corporate network (for Jira + internal URLs) |
-| **Jira PAT** | Personal Access Token for `https://jira.unity3d.com` |
-| **Git** | For GitHub and image tags in CI |
+| Tessen login | `tessen auth login` |
+| Team | **`csops-ops`** |
+| Jira | Personal Access Token (PAT) for `https://jira.unity3d.com` |
 
-You do **not** need local `npm` for deploy — dependencies install inside `docker build`.
+### Not required
+
+- Local **npm** — dependencies install inside `docker build`
+- Kubernetes expertise — for routine deploys
 
 ---
 
 ## Naming reference
 
-| Concept | Value for this project |
-|---------|-------------------------|
-| **Tessen team** | `csops-ops` |
-| **Project slug** | `csops-tickets-test-dashboard` (chosen at `tessen init`) |
-| **Namespace** | `csops-ops-csops-tickets-test-dashboard` (`<team>-<project>`) |
-| **Compose service name** | `support-tickets-dashboard` |
-| **Image path** | `europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/csops-ops-csops-tickets-test-dashboard/support-tickets-dashboard:<tag>` |
-| **Test URL** | https://support-tickets-dashboard.test.app.tessen.unity.com |
+Use these names consistently in commands, compose, and registry paths.
 
-Config lives in `.tessen.yml` (namespace + default cluster).
+| Concept | Value |
+|---------|--------|
+| Tessen team | `csops-ops` |
+| Project slug (from `tessen init`) | `csops-tickets-test-dashboard` |
+| **Namespace** | `csops-ops-csops-tickets-test-dashboard` |
+| Compose service name | `support-tickets-dashboard` |
+| Image repository | `europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/csops-ops-csops-tickets-test-dashboard/support-tickets-dashboard` |
+| Local / manual tag | `local` (when not using CI) |
+| Test URL hostname | `support-tickets-dashboard.test.app.tessen.unity.com` |
+
+Defaults are in **`.tessen.yml`** (namespace, cluster).
 
 ---
 
 ## First-time setup
 
-### 1. Clone the repo
+### Clone the repository
 
 ```bash
 git clone https://github.com/rohinimohan-create/support-tickets-dashboard.git
 cd support-tickets-dashboard
 ```
 
-### 2. Local environment (development only)
-
-Copy and edit (never commit):
+### Local config (development only)
 
 ```bash
-# .env — gitignored
+cp .env.example .env
+```
+
+Edit `.env` — **never commit this file.**
+
+```env
 PORT=8080
 JIRA_BASE_URL=https://jira.unity3d.com
 PROJECT_KEY=CSOP
 AUTH_MODE=bearer
 JIRA_API_TOKEN=<your-jira-pat>
-# JIRA_EMAIL only if using basic (disabled on Unity Jira — see below)
 ```
 
-### 3. Tessen init (already done in repo)
-
-If starting from scratch:
-
-```bash
-tessen init
-```
-
-This generates `.tessen.yml`, `docker-compose.yml`, `docker/support-tickets-dashboard.Dockerfile`, `scripts/`, and `.github/workflows/`.
-
-### 4. Docker registry auth
+### Docker registry authentication
 
 ```bash
 tessen docker config
 ```
 
-Confirm `europe-docker.pkg.dev` uses the **tessen** credential helper in `~/.docker/config.json`. Select **Continue** if prompted.
+- Confirm `europe-docker.pkg.dev` uses the **tessen** credential helper.
+- If prompted in the terminal UI, choose **Continue**.
+
+### New project from scratch (optional)
+
+If the repo did not already include Tessen files:
+
+```bash
+tessen init
+```
+
+That creates `.tessen.yml`, `docker-compose.yml`, Dockerfile, scripts, and GitHub workflows.
 
 ---
 
 ## Jira authentication
 
-Unity Jira (`jira.unity3d.com`) **does not allow HTTP Basic auth** (email + token). You will see:
+### Unity Jira does not use Basic auth
+
+If you deploy with `AUTH_MODE=basic`, Jira returns:
 
 ```json
 {"message":"Basic Authentication has been disabled on this instance."}
 ```
 
-### Use bearer + Personal Access Token
+### Correct setup: Bearer + PAT
 
-| Setting | Value |
-|---------|--------|
+| Variable | Value |
+|----------|--------|
 | `AUTH_MODE` | `bearer` |
 | `JIRA_API_TOKEN` | Jira Personal Access Token |
-| `JIRA_EMAIL` | Not required for bearer |
+| `JIRA_EMAIL` | **Not used** for bearer |
 
-### Add secrets to Tessen (required for cluster)
+### Add secrets to Tessen
 
-Secrets use **`KEY=VALUE`** syntax (no interactive prompt):
+Secrets must be **`KEY=VALUE`** — the CLI does not prompt interactively.
+
+#### Option A — one command
 
 ```bash
-# From project root — quoted values recommended
 tessen -k test namespace secrets add \
   AUTH_MODE=bearer \
   JIRA_API_TOKEN='<your-pat>'
+```
 
-# Or import Jira-related lines from .env
+#### Option B — from `.env`
+
+```bash
 grep -E '^(JIRA_API_TOKEN|AUTH_MODE|JIRA_BASE_URL|PROJECT_KEY)=' .env > .env.tessen
 tessen -k test namespace secrets add --from-file .env.tessen
 rm .env.tessen
 ```
 
-List keys (values are never shown):
+#### Verify secret keys exist
 
 ```bash
 tessen -k test namespace secrets list
 ```
 
-Expected keys: `JIRA_API_TOKEN`, `AUTH_MODE` (and optionally `JIRA_BASE_URL`, `PROJECT_KEY`).
+Expected names (values are hidden — this is normal):
 
-Secrets are wired in `docker-compose.yml`:
+- `JIRA_API_TOKEN`
+- `AUTH_MODE`
+
+> **Message you may see:** *"Secret values are never returned by the API"* — that means listing worked; proceed to redeploy.
+
+#### How secrets reach the app
+
+In `docker-compose.yml`:
 
 ```yaml
 tessen.secrets.JIRA_API_TOKEN: ".JIRA_API_TOKEN"
-tessen.secrets.JIRA_EMAIL: ".JIRA_EMAIL"
 ```
 
-### Verify Jira token locally
+### Test your PAT locally
 
 ```bash
 export $(grep -v '^#' .env | xargs)
@@ -183,25 +241,36 @@ curl -sS \
   "$JIRA_BASE_URL/rest/api/2/myself" | head -20
 ```
 
-You should get **JSON** (user profile), not HTML.
+- **Good:** JSON user object  
+- **Bad:** HTML / `<!DOCTYPE` → fix token or VPN before deploying
 
 ---
 
-## Manual deploy to test
+## Deploy to test (step by step)
 
-Run from repository root, in order:
+Run all commands from the **repository root**.
 
-### Step 1 — Build and push image
+### Step 1 — Configure Docker
 
 ```bash
 tessen docker config
+```
+
+### Step 2 — Build and push the image
+
+```bash
 bash scripts/build-and-push.sh
 ```
 
-- Without `GITHUB_SHA`, tag is **`local`**.
-- Must see **`pushed`** / `digest: sha256:...` — deploy will fail if this step is skipped.
+**Success looks like:**
 
-### Step 2 — Deploy
+- Build completes without error  
+- Line with `pushed` and `digest: sha256:...`  
+- Tag `.../support-tickets-dashboard:local` (when deploying manually from your laptop)
+
+> Without this step, the cluster will show **`ErrImagePull`** / **`not found`**.
+
+### Step 3 — Deploy to test
 
 ```bash
 CLUSTER=test bash scripts/tessen-deploy.sh
@@ -215,27 +284,46 @@ tessen -k test deployment up \
   -i support-tickets-dashboard=europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/csops-ops-csops-tickets-test-dashboard/support-tickets-dashboard:local
 ```
 
-Look for **`ok Secret`** in output (env/secret sync).
+**Success looks like:**
 
-### Step 3 — Verify
+- `ok Deployment`, `ok Secret`, `ok Service`  
+- Especially: **`ok Secret`** `csops-ops-csops-tickets-test-dashboard-tessen-env`
+
+### Step 4 — Check pod status
 
 ```bash
-tessen -k test status          # READY 1/1
-curl -sS https://support-tickets-dashboard.test.app.tessen.unity.com/healthz
-curl -sS https://support-tickets-dashboard.test.app.tessen.unity.com/api/data | head -c 200
+tessen -k test status
 ```
 
-**Health check:** `{"ok":true,"hasJiraToken":true,"authMode":"bearer",...}`  
+Wait for **`READY 1/1`** (not `ImagePullBackOff` or `NOT_READY`).
 
-**Data check:** JSON starting with `{"version":` (not `{"error":`).
+### Step 5 — Smoke test APIs
 
-### Step 4 — Open dashboard
+```bash
+curl -sS "https://support-tickets-dashboard.test.app.tessen.unity.com/healthz"
+```
 
-https://support-tickets-dashboard.test.app.tessen.unity.com (hard refresh: Cmd+Shift+R).
+Expected:
 
-### After code changes
+```json
+{"ok":true,"hasJiraToken":true,"authMode":"bearer","jiraBaseUrl":"https://jira.unity3d.com"}
+```
 
-Always **rebuild, push, redeploy**:
+```bash
+curl -sS "https://support-tickets-dashboard.test.app.tessen.unity.com/api/data" | head -c 200
+```
+
+Expected: JSON starting with `{"version":` — **not** `{"error":`
+
+### Step 6 — Open the dashboard
+
+https://support-tickets-dashboard.test.app.tessen.unity.com  
+
+Hard refresh: **Cmd+Shift+R**
+
+### After any code change
+
+Always repeat **build → push → deploy**:
 
 ```bash
 bash scripts/build-and-push.sh
@@ -244,75 +332,90 @@ CLUSTER=test bash scripts/tessen-deploy.sh
 
 ---
 
-## GitHub repository
+## GitHub
 
-### What is committed
+### What is in the repo
 
-- Application code, Dockerfile, `docker-compose.yml`, `.tessen.yml`
-- `scripts/build-and-push.sh`, `scripts/tessen-deploy.sh`
-- `.github/workflows/tessen-deploy-*.yml`
+- Application source, Dockerfile, `docker-compose.yml`, `.tessen.yml`  
+- `scripts/build-and-push.sh`, `scripts/tessen-deploy.sh`  
+- `.github/workflows/tessen-deploy-*.yml`  
+- This guide: `docs/DEPLOYMENT.md`
 
-### What is NOT committed
+### What must never be pushed
 
-- `.env` (tokens)
+- `.env` (contains `JIRA_API_TOKEN`)  
 - `node_modules/`
 
-### Initial push (already done)
+### Push changes
 
 ```bash
 git add .
-git status   # confirm .env is absent
-git commit -m "Your message"
-git push -u origin main
+git status    # confirm .env is NOT listed
+git commit -m "Describe your change"
+git push origin main
 ```
 
 ---
 
-## CI/CD (GitHub Actions)
+## CI/CD with GitHub Actions
 
-Workflows (from `tessen init`):
+### Workflows
 
-| Workflow | Trigger | Cluster |
-|----------|---------|---------|
+| File | When it runs | Cluster |
+|------|----------------|---------|
 | `tessen-deploy-test.yml` | Push to `main`, manual | test |
-| `tessen-deploy-stg.yml` | Manual / branch policy | stg |
-| `tessen-deploy-prd.yml` | Manual / branch policy | prd |
+| `tessen-deploy-stg.yml` | Manual | stg |
+| `tessen-deploy-prd.yml` | Manual | prd |
 
 ### Required GitHub secret
 
-**Settings → Secrets and variables → Actions → New repository secret**
+1. Repo → **Settings** → **Secrets and variables** → **Actions**  
+2. **New repository secret**  
+   - Name: `TESSEN_TOKEN`  
+   - Value: team CI token ([Tessen CI docs](https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/#tokens-for-ci))
 
-| Name | Value |
-|------|--------|
-| `TESSEN_TOKEN` | Team CI service account token |
+### CI image tag
 
-Docs: https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/#tokens-for-ci
-
-CI runs on **`unity-linux-runner`** with image `tessen/dind:latest`, then `scripts/build-and-push.sh` and `scripts/tessen-deploy.sh` (image tag = first 8 chars of `GITHUB_SHA`).
+On GitHub Actions, the image tag is the **first 8 characters of `GITHUB_SHA`**, not `local`.
 
 ---
 
-## Day-to-day commands
+## Commands cheat sheet
+
+### Deploy test
 
 ```bash
-# Status and logs
+tessen docker config
+bash scripts/build-and-push.sh
+CLUSTER=test bash scripts/tessen-deploy.sh
 tessen -k test status
+```
+
+### Observe
+
+```bash
 tessen -k test logs
 tessen -k test dashboard logs
+```
 
-# Redeploy same image
-CLUSTER=test bash scripts/tessen-deploy.sh
+### Secrets
 
-# Update secrets then redeploy
-tessen -k test namespace secrets add JIRA_API_TOKEN='...'
-CLUSTER=test bash scripts/tessen-deploy.sh
+```bash
+tessen -k test namespace secrets list
+tessen -k test namespace secrets add JIRA_API_TOKEN='<pat>'
+```
 
-# Preview diff without applying
-COMMAND=diff CLUSTER=test bash scripts/tessen-deploy.sh
+### Promote (when approved)
 
-# Promote (when ready)
+```bash
 CLUSTER=stg bash scripts/tessen-deploy.sh
 CLUSTER=prd bash scripts/tessen-deploy.sh
+```
+
+### Preview without applying
+
+```bash
+COMMAND=diff CLUSTER=test bash scripts/tessen-deploy.sh
 ```
 
 ---
@@ -321,150 +424,119 @@ CLUSTER=prd bash scripts/tessen-deploy.sh
 
 ### `command not found: npm`
 
-**Cause:** Node not installed locally.  
-**Fix:** Not required. Use `bash scripts/build-and-push.sh` (npm runs inside Docker).
+| | |
+|---|---|
+| **Cause** | Node not installed locally |
+| **Fix** | Ignore for deploy. Use `bash scripts/build-and-push.sh` — npm runs inside Docker |
 
 ---
 
-### `unable to parse secrets arguments` / `provide either KEY=VALUE arguments or --from-file`
+### `unable to parse secrets arguments` / `provide either KEY=VALUE`
 
-**Cause:** `tessen namespace secrets add` without `KEY=VALUE`.  
-**Fix:**
-
-```bash
-tessen -k test namespace secrets add JIRA_API_TOKEN='your-token'
-# or
-tessen -k test namespace secrets add --from-file .env.tessen
-```
+| | |
+|---|---|
+| **Cause** | Ran `tessen namespace secrets add` with no `KEY=VALUE` |
+| **Fix** | `tessen -k test namespace secrets add JIRA_API_TOKEN='<pat>'` or `--from-file .env.tessen` |
 
 ---
 
 ### `ErrImagePull` / `ImagePullBackOff` / `not found` for `:local`
 
-**Cause:** Image never pushed to Artifact Registry.  
-**Fix:**
-
-```bash
-tessen docker config
-bash scripts/build-and-push.sh   # must succeed with "pushed"
-CLUSTER=test bash scripts/tessen-deploy.sh
-```
+| | |
+|---|---|
+| **Cause** | Image not pushed to Artifact Registry |
+| **Fix** | `tessen docker config` → `bash scripts/build-and-push.sh` (must see **pushed**) → redeploy |
 
 ---
 
-### Browser: `Failed to load resource` 404
+### Browser: 404 on some resource
 
-**Cause:** Usually missing `favicon.ico` or `public/` assets.  
-**Fix:** Harmless; ignore unless a required asset 404s.
+| | |
+|---|---|
+| **Cause** | Often `favicon.ico` or missing `public/` folder |
+| **Fix** | Safe to ignore if `/api/data` works |
 
 ---
 
-### Browser: `/api/data` 500
+### Browser: `/api/data` returns 500
 
-**Cause:** Server error (Jira auth, missing token).  
-**Fix:** Check Network → Response body, or:
-
-```bash
-curl -sS https://support-tickets-dashboard.test.app.tessen.unity.com/api/data
-tessen -k test logs
-```
+| | |
+|---|---|
+| **Cause** | Server error — usually Jira auth or missing token |
+| **Fix** | `curl .../api/data` and `tessen -k test logs`; fix secrets and redeploy |
 
 ---
 
 ### `{"error":"JIRA_EMAIL required for basic auth"}`
 
-**Cause:** `AUTH_MODE=basic` but `JIRA_EMAIL` not in pod secrets.  
-**Fix:** Unity Jira disables basic — switch to bearer (below). If you truly need basic elsewhere:
-
-```bash
-tessen -k test namespace secrets add JIRA_EMAIL='you@unity3d.com'
-CLUSTER=test tessen -k test deployment up -E AUTH_MODE=basic -i <image>
-```
+| | |
+|---|---|
+| **Cause** | `AUTH_MODE=basic` but email not in pod |
+| **Fix** | Unity Jira needs **bearer**, not basic. See [Jira authentication](#jira-authentication) |
 
 ---
 
-### `Jira API error 403: Basic Authentication has been disabled on this instance`
+### `Jira API error 403: Basic Authentication has been disabled`
 
-**Cause:** `AUTH_MODE=basic` against Unity Jira.  
-**Fix:**
-
-```bash
-tessen -k test namespace secrets add AUTH_MODE=bearer JIRA_API_TOKEN='<pat>'
-CLUSTER=test tessen -k test deployment up -E AUTH_MODE=bearer -i <image>
-```
+| | |
+|---|---|
+| **Cause** | `AUTH_MODE=basic` on Unity Jira |
+| **Fix** | `AUTH_MODE=bearer`, update secrets, redeploy with `-E AUTH_MODE=bearer` |
 
 ---
 
-### `{"error":"Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"}`
+### `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`
 
-**Cause:** Jira returned an HTML login page; old container build used `response.json()` on HTML.  
-**Fix:**
-
-1. Use valid **bearer PAT** and `AUTH_MODE=bearer`.
-2. Rebuild and redeploy so latest `server.js` is running:
-
-   ```bash
-   bash scripts/build-and-push.sh
-   CLUSTER=test bash scripts/tessen-deploy.sh
-   ```
-
-3. New errors should read *“Jira returned HTML instead of JSON…”* if auth is still wrong.
+| | |
+|---|---|
+| **Cause** | Jira returned HTML (login page) — invalid or missing PAT |
+| **Fix** | Use bearer + valid PAT; `bash scripts/build-and-push.sh` and redeploy latest code |
 
 ---
 
 ### `Secret values are never returned by the API`
 
-**Cause:** Normal when running `tessen namespace secrets list`.  
-**Fix:** None — confirms secrets exist by name only. Redeploy after adding secrets.
+| | |
+|---|---|
+| **Cause** | Normal behavior for `namespace secrets list` |
+| **Fix** | None. Redeploy after adding secrets |
 
 ---
 
 ### Dashboard empty but `curl /api/data` works
 
-**Cause:** Browser cache or old JS error.  
-**Fix:** Hard refresh (Cmd+Shift+R); check DevTools → Network → `api/data`.
+| | |
+|---|---|
+| **Cause** | Browser cache |
+| **Fix** | Cmd+Shift+R; DevTools → Network → `api/data` |
 
 ---
 
-### DNS / URL not loading
+### URL not loading / DNS
 
-**Cause:** DNS propagation after first deploy (up to ~5 minutes).  
-**Fix:** Wait; `tessen -k test status` shows URL when ready.
-
----
-
-## Security notes
-
-- Never commit `.env` or paste PATs in Slack/docs/tickets.
-- Rotate Jira PAT if exposed.
-- Test cluster is **internal** (`tessen.label.confidentiality: internal`).
-- Optional ingress SSO: uncomment `tessen.proxy.http.auth: "okta"` in `docker-compose.yml`.
+| | |
+|---|---|
+| **Cause** | DNS propagation after first deploy |
+| **Fix** | Wait up to ~5 minutes; check `tessen -k test status` |
 
 ---
 
-## Quick reference card
+## Security
 
-```bash
-# One-time / when secrets change
-tessen -k test namespace secrets add --from-file .env.tessen
-
-# Standard test deploy
-tessen docker config
-bash scripts/build-and-push.sh
-CLUSTER=test bash scripts/tessen-deploy.sh
-tessen -k test status
-curl -sS https://support-tickets-dashboard.test.app.tessen.unity.com/api/data | head -c 100
-```
+- Do **not** commit `.env` or share PATs in Slack, tickets, or email  
+- Rotate Jira PAT if it was ever exposed  
+- Cluster exposure is **internal** (`tessen.label.confidentiality: internal`)  
+- Optional SSO on ingress: `tessen.proxy.http.auth: "okta"` in `docker-compose.yml`
 
 ---
 
-## Related documentation
+## Official Tessen links
 
-- [Tessen quick start](https://developer.portal.internal.unity.com/docs/default/Component/tessen/workflows/quick-start/)
-- [Tessen CI deploy / tokens](https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/)
-- [Tessen secrets](https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/secrets/)
-- [Tessen troubleshooting](https://developer.portal.internal.unity.com/docs/default/Component/tessen/troubleshooting/)
+- [Quick start](https://developer.portal.internal.unity.com/docs/default/Component/tessen/workflows/quick-start/)
+- [CI deploy & tokens](https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/)
+- [Secrets](https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/secrets/)
+- [Troubleshooting](https://developer.portal.internal.unity.com/docs/default/Component/tessen/troubleshooting/)
 
 ---
 
-*Document version: 2026-05-25 — reflects deployment to `csops-ops-csops-tickets-test-dashboard` on Tessen test.*
+*Guide version: 2026-05-25 · Namespace `csops-ops-csops-tickets-test-dashboard` on Tessen test.*
