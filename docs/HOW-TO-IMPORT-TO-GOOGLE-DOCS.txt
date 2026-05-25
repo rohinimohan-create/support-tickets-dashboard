@@ -1,0 +1,34 @@
+Import deployment guide into Google Docs
+======================================
+
+File to upload: DEPLOYMENT-GoogleDocs.docx
+(Full path on your Mac:)
+
+  /Users/rohini.mohan/Github/support-tickets-dashboard/docs/DEPLOYMENT-GoogleDocs.docx
+
+Option A — Upload to Google Drive (recommended)
+----------------------------------------------
+1. Open https://drive.google.com
+2. New → File upload
+3. Select DEPLOYMENT-GoogleDocs.docx
+4. Double-click the uploaded file, or right-click → Open with → Google Docs
+5. Google Docs converts it to an editable document
+6. (Optional) File → Make a copy to save as native Google Doc
+
+Option B — Import in Google Docs directly
+----------------------------------------
+1. Open https://docs.google.com
+2. File → Open → Upload
+3. Select DEPLOYMENT-GoogleDocs.docx
+
+Option C — Use the HTML file instead
+------------------------------------
+Upload DEPLOYMENT-GoogleDocs.html the same way if docx formatting looks wrong.
+
+After import
+------------
+- Apply your team’s Google Docs theme/fonts if needed (Format → Theme)
+- Share with teammates via link (Viewer or Editor)
+
+Also available in the repo as Markdown:
+  docs/DEPLOYMENT.md

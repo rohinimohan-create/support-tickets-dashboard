@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Support Tickets Dashboard — Deployment Guide</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.45; color: #172b4d; max-width: 7.5in; margin: 0.75in auto; }
+  h1 { font-size: 22pt; color: #0052cc; border-bottom: 2px solid #0052cc; padding-bottom: 8px; }
+  h2 { font-size: 16pt; color: #0052cc; margin-top: 24px; page-break-after: avoid; }
+  h3 { font-size: 13pt; color: #253858; margin-top: 18px; }
+  h4 { font-size: 11pt; color: #42526e; margin-top: 14px; }
+  p { margin: 8px 0; }
+  .meta { background: #f4f5f7; border-left: 4px solid #0052cc; padding: 12px 16px; margin: 16px 0; }
+  .warning { background: #fff0e0; border-left: 4px solid #ff8b00; padding: 12px 16px; margin: 12px 0; }
+  .tip { background: #e3fcef; border-left: 4px solid #00875a; padding: 12px 16px; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 10pt; }
+  th, td { border: 1px solid #dfe1e6; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f5f7; font-weight: bold; }
+  code, pre { font-family: Consolas, Monaco, monospace; font-size: 9.5pt; background: #f4f5f7; }
+  pre { padding: 12px; border: 1px solid #dfe1e6; white-space: pre-wrap; margin: 10px 0; }
+  ul, ol { margin: 8px 0 8px 24px; }
+  li { margin: 4px 0; }
+  a { color: #0052cc; }
+  .error-title { color: #bf2600; font-weight: bold; }
+  hr { border: none; border-top: 1px solid #dfe1e6; margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<h1>Support Tickets Dashboard — Deployment Guide</h1>
+
+<div class="meta">
+<p><strong>Audience:</strong> Teammates deploying or maintaining the CSOP Jira dashboard on Unity Tessen.</p>
+<p><strong>Last updated:</strong> May 2026 &nbsp;|&nbsp; <strong>Environment:</strong> Tessen test</p>
+</div>
+
+<h2>At a glance</h2>
+<table>
+<tr><th>Item</th><th>Value</th></tr>
+<tr><td>Live dashboard (test)</td><td>https://support-tickets-dashboard.test.app.tessen.unity.com</td></tr>
+<tr><td>GitHub</td><td>https://github.com/rohinimohan-create/support-tickets-dashboard</td></tr>
+<tr><td>Tessen namespace</td><td>csops-ops-csops-tickets-test-dashboard</td></tr>
+<tr><td>Tessen team</td><td>csops-ops</td></tr>
+<tr><td>Support</td><td>Slack #devs-tessen</td></tr>
+</table>
+
+<h2>What this project is</h2>
+<h3>Application</h3>
+<ul>
+<li><strong>Stack:</strong> Node.js, Express, EJS (server.js, views/index.ejs)</li>
+<li><strong>Data:</strong> Jira REST API — CSOP project metrics, charts, open issues</li>
+<li><strong>Port:</strong> 8080 inside the container</li>
+</ul>
+
+<h3>Platform</h3>
+<ul>
+<li>Docker image → Unity Artifact Registry</li>
+<li>Tessen reads docker-compose.yml and deploys to shared GKE (test / stg / prd)</li>
+<li>No Kubernetes YAML required for routine deploys</li>
+</ul>
+
+<div class="warning">
+<p><strong>Important:</strong> Local .env is NOT used in the cluster. The running pod gets config from Tessen namespace secrets and deploy flags (-E). After changing .env, run tessen namespace secrets add and redeploy.</p>
+</div>
+
+<h2>How deployment works</h2>
+<pre>Your laptop or GitHub Actions
+    → docker build + push → Artifact Registry
+    → tessen deployment up → Tessen / GKE (ingress, TLS, secrets, pods)</pre>
+
+<table>
+<tr><th>Script</th><th>Purpose</th></tr>
+<tr><td>scripts/build-and-push.sh</td><td>Build linux/amd64 image and push to registry</td></tr>
+<tr><td>scripts/tessen-deploy.sh</td><td>Run tessen deployment up + status</td></tr>
+</table>
+
+<div class="warning">
+<p><strong>Common mistake:</strong> Running deploy without push → ImagePullBackOff because :local does not exist in the registry.</p>
+</div>
+
+<h2>Before you start</h2>
+<h3>Tools</h3>
+<table>
+<tr><th>Tool</th><th>Notes</th></tr>
+<tr><td>Tessen CLI</td><td>brew install --cask tessen</td></tr>
+<tr><td>Docker Desktop</td><td>Running; docker ps works</td></tr>
+<tr><td>Git</td><td>Clone / push to GitHub</td></tr>
+<tr><td>VPN</td><td>Unity network</td></tr>
+</table>
+
+<h3>Access</h3>
+<ul>
+<li>tessen auth login</li>
+<li>Team: <strong>csops-ops</strong></li>
+<li>Jira Personal Access Token for https://jira.unity3d.com</li>
+</ul>
+<p><strong>Not required:</strong> local npm (dependencies install inside docker build).</p>
+
+<h2>Naming reference</h2>
+<table>
+<tr><th>Concept</th><th>Value</th></tr>
+<tr><td>Tessen team</td><td>csops-ops</td></tr>
+<tr><td>Namespace</td><td>csops-ops-csops-tickets-test-dashboard</td></tr>
+<tr><td>Compose service</td><td>support-tickets-dashboard</td></tr>
+<tr><td>Image tag (manual)</td><td>local</td></tr>
+<tr><td>Test URL</td><td>support-tickets-dashboard.test.app.tessen.unity.com</td></tr>
+</table>
+
+<h2>First-time setup</h2>
+<h3>1. Clone</h3>
+<pre>git clone https://github.com/rohinimohan-create/support-tickets-dashboard.git
+cd support-tickets-dashboard</pre>
+
+<h3>2. Local .env (never commit)</h3>
+<pre>cp .env.example .env</pre>
+<pre>PORT=8080
+JIRA_BASE_URL=https://jira.unity3d.com
+PROJECT_KEY=CSOP
+AUTH_MODE=bearer
+JIRA_API_TOKEN=&lt;your-jira-pat&gt;</pre>
+
+<h3>3. Docker auth</h3>
+<pre>tessen docker config</pre>
+
+<h2>Jira authentication</h2>
+<div class="warning">
+<p>Unity Jira does <strong>not</strong> allow Basic auth (email + token). Use AUTH_MODE=bearer with a Personal Access Token.</p>
+</div>
+
+<h3>Add secrets to Tessen</h3>
+<p>Format must be KEY=VALUE (no interactive prompt):</p>
+<pre>tessen -k test namespace secrets add \
+  AUTH_MODE=bearer \
+  JIRA_API_TOKEN='&lt;your-pat&gt;'</pre>
+
+<p>Or from .env:</p>
+<pre>grep -E '^(JIRA_API_TOKEN|AUTH_MODE|JIRA_BASE_URL|PROJECT_KEY)=' .env &gt; .env.tessen
+tessen -k test namespace secrets add --from-file .env.tessen
+rm .env.tessen</pre>
+
+<pre>tessen -k test namespace secrets list</pre>
+
+<h2>Deploy to test (step by step)</h2>
+<h3>Step 1 — Docker config</h3>
+<pre>tessen docker config</pre>
+
+<h3>Step 2 — Build and push (required)</h3>
+<pre>bash scripts/build-and-push.sh</pre>
+<p>Must see <strong>pushed</strong> and digest sha256:...</p>
+
+<h3>Step 3 — Deploy</h3>
+<pre>CLUSTER=test bash scripts/tessen-deploy.sh</pre>
+<p>Look for: ok Secret csops-ops-csops-tickets-test-dashboard-tessen-env</p>
+
+<h3>Step 4 — Status</h3>
+<pre>tessen -k test status</pre>
+<p>Wait for READY 1/1</p>
+
+<h3>Step 5 — Verify</h3>
+<pre>curl -sS "https://support-tickets-dashboard.test.app.tessen.unity.com/healthz"
+curl -sS "https://support-tickets-dashboard.test.app.tessen.unity.com/api/data" | head -c 200</pre>
+<p>Expect JSON with "version": not "error":</p>
+
+<h3>Step 6 — Open dashboard</h3>
+<p>https://support-tickets-dashboard.test.app.tessen.unity.com (Cmd+Shift+R to refresh)</p>
+
+<h2>GitHub &amp; CI/CD</h2>
+<p>Never commit .env or node_modules/</p>
+<p>GitHub Actions secret: <strong>TESSEN_TOKEN</strong> (team CI token)</p>
+<p>Workflows: tessen-deploy-test.yml (push to main), stg/prd manual</p>
+
+<h2>Commands cheat sheet</h2>
+<pre>tessen docker config
+bash scripts/build-and-push.sh
+CLUSTER=test bash scripts/tessen-deploy.sh
+tessen -k test status
+tessen -k test logs</pre>
+
+<h2>Troubleshooting</h2>
+
+<h3 class="error-title">command not found: npm</h3>
+<p><strong>Fix:</strong> Use bash scripts/build-and-push.sh — npm runs inside Docker.</p>
+
+<h3 class="error-title">unable to parse secrets arguments</h3>
+<p><strong>Fix:</strong> Use KEY=VALUE: tessen -k test namespace secrets add JIRA_API_TOKEN='...'</p>
+
+<h3 class="error-title">ErrImagePull / ImagePullBackOff / not found :local</h3>
+<p><strong>Fix:</strong> Run build-and-push.sh until image is pushed, then redeploy.</p>
+
+<h3 class="error-title">/api/data returns 500</h3>
+<p><strong>Fix:</strong> curl /api/data, tessen -k test logs, fix secrets, redeploy.</p>
+
+<h3 class="error-title">JIRA_EMAIL required for basic auth</h3>
+<p><strong>Fix:</strong> Use AUTH_MODE=bearer (Unity Jira disables basic).</p>
+
+<h3 class="error-title">403 Basic Authentication has been disabled</h3>
+<p><strong>Fix:</strong> AUTH_MODE=bearer + PAT, redeploy with -E AUTH_MODE=bearer</p>
+
+<h3 class="error-title">Unexpected token '&lt;' / DOCTYPE not valid JSON</h3>
+<p><strong>Fix:</strong> Invalid PAT or bearer not set; rebuild, push, redeploy.</p>
+
+<h3 class="error-title">Secret values are never returned by the API</h3>
+<p><strong>Fix:</strong> Normal — redeploy after adding secrets.</p>
+
+<h2>Security</h2>
+<ul>
+<li>Never commit .env or share PATs</li>
+<li>Rotate PAT if exposed</li>
+<li>Internal confidentiality on Tessen</li>
+</ul>
+
+<h2>Official links</h2>
+<ul>
+<li>Tessen quick start — developer.portal.internal.unity.com (Component/tessen)</li>
+<li>CI deploy &amp; tokens — usage/ci-deploy</li>
+<li>Secrets — usage/secrets</li>
+</ul>
+
+<p><em>Guide version 2026-05-25 — csops-ops-csops-tickets-test-dashboard on Tessen test.</em></p>
+
+</body>
+</html>
