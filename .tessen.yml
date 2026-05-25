@@ -1,0 +1,38 @@
+# Tessen defaults
+# Use this file to set default commandline parameters
+
+# | --namespace | Kubernetes namespace
+# |        cmds | deployment up, deployment down, logs, pods, status, ...
+namespace: csops-ops-csops-tickets-test-dashboard
+
+# | --cluster | Kubernetes cluster
+# |      cmds | deployment up, deployment down, logs, pods, status, ...
+cluster: test
+
+# | --tail | lines of recent log file to display. Use '0' to get all lines
+# |   cmds | logs
+logs.tail: 100
+
+# | --container | the specific container you want to get logs from
+# |        cmds | logs, dashboard logs
+# logs.container: support-tickets-dashboard
+
+# | --json | extends Loki log parsing to treat your log lines as json
+# |   cmds | dashboard logs
+# logs.json: true
+
+# | --prefix | custom log output prefix. See 'tessen logs --help' for more details
+# |     cmds | logs
+# logs.prefix: "[%D %t] %P/%C"
+
+# | --all | print status from all known Kubernetes clusters
+# |  cmds | status
+# status.all: true
+
+# | --columns | enable/disable status columns
+# |  cmds | status
+# status.columns: nsrtad
+
+# | --token | override auth token from $HOME/.tessen/auth
+# |    cmds | <all non-local commands>
+# token: 0123456789ABCDEF

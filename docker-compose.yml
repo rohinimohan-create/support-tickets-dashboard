@@ -1,0 +1,208 @@
+# $schema: https://tessen.unity.com/schema.json
+# This is a simplified template, please see our documentation at https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/config-full/
+# Or run 'tessen init --export-docker-compose --full' to see a full example.
+# A detailed description of all available labels is also present at https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/labels/
+
+# Tessen deployment config. See https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/deployment-config/#tessen-deployment-config-x-tessen
+x-tessen:
+  defaults: v2
+
+# List of services that will be created
+services:
+
+  # Sample API service called "support-tickets-dashboard"
+  # Note: Both service name and image name should use lowercase letters
+  support-tickets-dashboard:
+
+    # Docker image that runs this service
+    # You need to push this to a known repository for Tessen/Kubernetes to be able to pick it up,
+    # or have it built locally if you are just running 'docker-compose' in your machine
+    #
+    # IMPORTANT: Image names must include your Tessen namespace as a path prefix, following the scheme:
+    #   europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/csops-ops-csops-tickets-test-dashboard/support-tickets-dashboard:tag
+    image: europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/csops-ops-csops-tickets-test-dashboard/support-tickets-dashboard:local
+
+    # Forces builds and deployments to use a platform that works in Kubernetes
+    # This is necessary because some systems (such as M1 macs) will build / run platforms that are incompatible,
+    # leading to 'exec user process caused: exec format error' errors
+    platform: linux/amd64
+
+    build:
+      context: .
+      dockerfile: docker/support-tickets-dashboard.Dockerfile
+
+    # (optional) Ports mapped from this container
+    ports:
+      - "8080:8080"
+
+    # (optional) Command used by the docker containers when launching
+    # Note: Expanding environment variables in the command requires that you pass -E SOMEVAR=myvalue when deploying
+    # to Tessen otherwise the environment variable will be expanded without any value.
+    #
+    # Environment variables in the environment section will NOT be expanded in here either so please use -E.
+    #command: my-awesome-app $SOMEVAR
+
+    labels:
+      # (mandatory) Provide the confidentiality level of your service, valid options are: (internal, public and confidential)
+      # Note: This is a mandatory label and your service will receive a warning when deployed without it.
+      # More information on confidentiality levels can be found here https://docs.internal.unity.com/pre-shared/finops/guidelines/labeling_tagging#confidentiality
+      tessen.label.confidentiality: "internal"
+
+      # (optional) Create a HTTPs load balancer and DNS using HTTP to connect to your container within the cluster. Accepts a comma-separated list of hostnames
+      tessen.proxy.http.hostnames: support-tickets-dashboard
+
+      tessen.healthcheck.liveness.http.path: /
+      tessen.healthcheck.liveness.http.port: 8080
+      tessen.healthcheck.readiness.http.path: /
+      tessen.healthcheck.readiness.http.port: 8080
+
+      # Jira credentials from namespace secrets (not git). Create with:
+      #   tessen -k test namespace secrets add JIRA_API_TOKEN
+      #   tessen -k test namespace secrets add JIRA_EMAIL
+      tessen.secrets.JIRA_API_TOKEN: ".JIRA_API_TOKEN"
+      tessen.secrets.JIRA_EMAIL: ".JIRA_EMAIL"
+
+      # (optional) Enable authentication for the HTTP ingress. Clients must authenticate with the configured
+      # provider before they can access your service. Supported values: okta, google
+      # Use "google" if you need CLI users or service accounts to authenticate.
+      # Service accounts need to be added to the allowlist first with: tessen namespace oauth serviceaccount add <email>
+      # See https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/http-authentication/ for more details
+      #tessen.proxy.http.auth: "okta"
+
+      # (recommended) Specify a path to perform liveness checks on
+      # An introduction on health checks and how they are implemented in Kubernetes can be found here
+      # https://cloud.google.com/blog/products/gcp/kubernetes-best-practices-setting-up-health-checks-with-readiness-and-liveness-probes
+      #tessen.healthcheck.liveness.http.path: /
+
+      # (optional) Map MY_ENV_VAR env var from namespace secret "tessen-secrets" key "MY_ENV_VAR_SECRET_KEY"
+      # See https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/secrets/ for details on using namespace secrets with tessen.secrets.*
+      #tessen.secrets.MY_ENV_VAR: ".MY_ENV_VAR_SECRET_KEY"
+
+      # (optional) Comma separated list of Slack channels to receive alerts when your application is not responding.
+      # You must configure you Slack channels to enable all messaging features,
+      # for more information read: https://developer.portal.internal.unity.com/docs/default/Component/tessen/monitoring/notifications/
+      #tessen.slack.notifiers: "#my-channel,#my-other-channel"
+
+      # (optional) Ignore this service when deploying the contents of the docker-compose file to Kubernetes
+      #tessen.ignore: "true"
+
+      # (optional) Create a Google Cloud Memorystore for Redis instance
+      # Max length: 40 characters minus the number of characters in your namespace name.
+      # Requires adding a tessen.secrets.REDIS_PASSWORD: "tessen.cnrm.redisinstance.<instance_name>.REDIS_PASSWORD" label 
+      # to your service which will use the redis.
+      # For full Redis configuration options, see https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/labels/
+      # for more information read: https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/redis/
+      #tessen.redis.instance: my-redis
+
+      # (optional) Create a persistent volume named myvolume and mount that volume at the given mount path, if you
+      # want a persistent volume then this label is required.
+      #
+      # Note: Adding a volume after your first deployment will create an additional StatefulSet and not remove your old
+      # Deployment object see [this](https://developer.portal.internal.unity.com/docs/default/Component/tessen/troubleshooting/#adding-a-volume-after-your-first-deploy) guide on how to deal with this.
+      #
+      #tessen.volume.myvolume.mount: /var/my/path
+
+      # (optional) Set size for the persistent volume named myvolume.
+      # Size values can be raw bytes or using for example 1Gi.
+      # Default value: 1Gi
+      # See https://developer.portal.internal.unity.com/docs/default/component/tessen/configuring/volumes/#volume-sizes for more info on sizes
+      #tessen.volume.myvolume.size: 5Gi
+
+      # (optional) Set disk type for the persistent volume named myvolume. Available types are: (standard, ssd)
+      # Default value: standard
+      #tessen.volume.myvolume.type: standard
+
+      # (optional) Replace this container with cloudSQL proxy pointing at the requested instance
+      #tessen.cloudsql.instance: my-cloudsql-instance
+
+      # (optional) Change the project for the cloudSQL proxy instance
+      # Changing this is most useful if you want to connect to an existing cloud SQL instance in another project.
+      # Please see https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/cloudsql/#using-another-google-project-for-your-cloud-sql-instance for more information on how to do this.
+      # Default value: The defined project for the cluster
+      #tessen.cloudsql.project: unity-my-project
+
+      # (optional) Choose a type for a cloudSQL instance, this will create a CloudSQL instance unless the type is of
+      # cloudSQLProxy, in which case this container will be replaced with a Cloud SQL Proxy but no CloudSQL instance
+      # will be created. This is useful if you already have a Cloud SQL instance created by other means.
+      # Valid options are 'postgres', 'mysql', and 'cloudSQLProxy'.
+      #tessen.cloudsql.type: postgres
+
+      # (optional) Set a username for connections to your cloudSQL proxy (this is the username your application will use)
+      # Required if you are using tessen.cloudsql.type == 'postgres' or 'mysql' otherwise ignored
+      #tessen.cloudsql.username: postgres
+
+      # (optional) Set a password for connections to your cloudSQL proxy (this is the password your application will use)
+      # Required if you are using tessen.cloudsql.type == 'postgres' or 'mysql' otherwise ignored
+      #
+      # Please only use environment variables here, which you can pass with -E when deploying
+      # (example) tessen deployment up -E PG_PASS=mypass
+      #tessen.cloudsql.password: $PG_PASS
+
+      # (optional) Set the version for your cloudSQL instance.
+      # Valid versions for MySQL: MYSQL_8_4, MYSQL_8_0, MYSQL_5_7, MYSQL_5_6 (Default is MYSQL_5_6)
+      # Valid versions for PostgreSQL: POSTGRES_17, POSTGRES_16, POSTGRES_15, POSTGRES_14, POSTGRES_13, POSTGRES_12, POSTGRES_11, POSTGRES_10, POSTGRES_9_6 (Default is POSTGRES_9_6)
+      #tessen.cloudsql.version: POSTGRES_17
+
+      # (optional) Create a database for your cloudSQL instance
+      # If you want to create a database within your cloudSQL instance you can use this label to do that. The value isn't used for now.
+      #tessen.cloudsql.database.my-database-name: true
+
+      # (optional) Set the path to the database migrations for your cloudSQL instance.
+      # This will enable the migrator job to run on deployment.
+      # This path references your repository/code where your migrations live.
+      # Runs against the database in the key.
+      #tessen.cloudsql.database.my-database-name.migrations.path: ./migrations
+
+    # (optional) List of environment variables set during this container's execution
+    # Note: Tessen makes the following variables available for $VAR expansion in this file
+    # at deploy time (the same mechanism as -E flags). To use them, reference them here:
+    #   TESSEN_COMPOSE_CLUSTER_NAME        - cluster name (e.g. prd-euw1, stg-euw1, test-euw1)
+    #   TESSEN_COMPOSE_CLUSTER_ENVIRONMENT - environment tier (prd, stg, test)
+    #   TESSEN_COMPOSE_CLUSTER_GCP_PROJECT - GCP project hosting the cluster (e.g. unity-cds-services-prd)
+    #   TESSEN_COMPOSE_CLUSTER_REGION      - default GCP region for the cluster (e.g. europe-west1, us-central1)
+    #   TESSEN_COMPOSE_SUBNETS_UNITY       - Unity corporate subnet CIDRs as a comma-separated list
+    #   TESSEN_COMPOSE_SUBNETS_GITHUB      - GitHub IP address range CIDRs as a comma-separated list
+    # These are NOT set when running locally with 'docker-compose'. Use fallbacks if needed:
+    #   MY_CLUSTER: ${TESSEN_COMPOSE_CLUSTER_NAME:-local}
+    #   MY_ENV:     ${TESSEN_COMPOSE_CLUSTER_ENVIRONMENT:-local}
+    # See https://developer.portal.internal.unity.com/docs/default/Component/tessen/usage/environment-variables/ for more information.
+    environment:
+      # Unity Jira disables basic auth — use a Personal Access Token with bearer mode
+      AUTH_MODE: ${AUTH_MODE:-bearer}
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-https://jira.unity3d.com}
+      PROJECT_KEY: ${PROJECT_KEY:-CSOP}
+    #  WORDPRESS_DB_USER: tessendb
+    #  WORDPRESS_DB_PASSWORD: tessendb
+
+    # (optional) Specify configuration related to the deployment and running of services.
+    # See: https://docs.docker.com/compose/compose-file/#deploy for more information and options
+    deploy:
+      # Number of replicas to run. Defaults to 1 for local running 3 in production and 2 in test/staging.
+      # A minimum of 3 is recommended in production to reduce the likelihood of downtime.
+      replicas: ${REPLICAS:-1}
+
+      # (optional) Set different resource limits for containers in this service. If nothing is specified, containers
+      # are limited to 0.25 CPU and 256Mi of memory by default.
+      #
+      resources:
+        limits:
+          memory: 256Mb
+        reservations:
+          cpus: '0.10'
+          memory: 100Mb
+
+    # (optional) Instructions to check if container is running currently
+    # - When running locally with 'docker-compose', this will be used to display container health in 'docker-compose ps'
+    # - When running in Tessen/Kubernetes, the container will be automatically restarted when this check fails
+    #healthcheck:
+    #  test: ["CMD", "curl", "-f", "http://localhost:80/healthz"]
+    #  interval: 1m30s
+    #  timeout: 10s
+    #  retries: 3
+    #  start_period: 40s
+
+    # (optional | local-only) Local paths to be mounted in a local running container
+    # These have no effect for Tessen, please use tessen.volume labels listed above if you wish to use
+    # persistent volumes within Tessen.
+    #volumes:
+    #  - ~/.ssh:/root/.ssh # Maps local path '~/.ssh' to '/root/.ssh' inside the running container

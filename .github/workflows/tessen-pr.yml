@@ -1,0 +1,45 @@
+name: Tessen Diff
+on:
+  pull_request:
+jobs:
+  diff-tessen:
+    name: Diff Tessen
+    runs-on: unity-linux-runner
+    container:
+      image: europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/tessen/dind:latest
+    env:
+      TESSEN_TOKEN: ${{ secrets.TESSEN_TOKEN }}
+      REPLICAS: "2"
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check if Tessen Token is available
+        run: bash -c '[ -z "${TESSEN_TOKEN}" ] && echo "Missing TESSEN_TOKEN environment variable, please provide it following instructions at https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/#tokens-for-ci" && exit 1; exit 0;'
+      - name: Diff
+        id: diff
+        run: bash scripts/tessen-deploy.sh
+        env:
+          CLUSTER: test
+          COMMAND: "diff --diffExitCode=false"
+      - name: Find diff comment
+        uses: peter-evans/find-comment@v2
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: Tessen Diff
+
+      - name: Create or update diff comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### 📖 Tessen Diff 📖
+            <details>
+            <summary>Planned changes</summary>
+
+            ```diff
+            ${{ steps.diff.outputs.TESSEN_DIFF }}
+            ```
+            </details>
+          edit-mode: replace

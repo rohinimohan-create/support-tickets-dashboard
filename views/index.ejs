@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title><%= config.appTitle %></title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+      /* Same CSS as your original script */
+      :root { --jira-blue: #0052cc; --jira-blue-dark: #0747a6; --bg: #f4f5f7; --surface: #ffffff; --border: #dfe1e6; --text: #172b4d; --muted: #5e6c84; --success: #00875a; --warn: #ff8b00; --danger: #de350b; --radius: 8px; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+      .app { max-width: 1320px; margin: 0 auto; padding: 24px 20px 40px; }
+      header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .logo { width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, var(--jira-blue), #2684ff); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; }
+      h1 { margin: 0; font-size: 1.5rem; font-weight: 700; }
+      .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+      .subtitle a { color: var(--jira-blue); text-decoration: none; }
+      .subtitle a:hover { text-decoration: underline; }
+      .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .chip, .refresh-btn, .link-btn { border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
+      .chip { background: var(--surface); border: 1px solid var(--border); color: var(--muted); padding: 8px 12px; }
+      .refresh-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; cursor: pointer; }
+      .refresh-btn[data-state='current'] { border-color: #abf5d1; background: #e3fcef; color: var(--success); }
+      .refresh-btn[data-state='stale'] { border-color: #ffe0b3; background: #fff0e0; color: #b65c00; animation: pulse 1.5s ease-in-out infinite; }
+      .refresh-btn:disabled { opacity: 0.7; cursor: wait; }
+      .link-btn { background: var(--jira-blue); color: #fff; border: none; padding: 8px 14px; text-decoration: none; display: inline-flex; align-items: center; }
+      .link-btn:hover { background: var(--jira-blue-dark); }
+      @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 139, 0, 0.15); } }
+      .banner { display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: var(--radius); background: #ffebe6; border: 1px solid #ffbdad; color: #bf2600; font-size: 0.9rem; }
+      .banner.show { display: block; }
+      .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+      .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+      .kpi .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+      .kpi .value { margin-top: 6px; font-size: 1.6rem; font-weight: 700; color: var(--jira-blue); }
+      .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
+      @media (max-width: 960px) { .charts { grid-template-columns: 1fr; } }
+      .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+      .chart-card.wide { grid-column: 1 / -1; }
+      .chart-card h3 { margin: 0 0 4px; font-size: 0.92rem; font-weight: 600; }
+      .chart { height: 280px; }
+      .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; }
+      .table-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+      .table-head h3 { margin: 0; font-size: 0.95rem; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+      th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+      th { background: #fafbfc; color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; position: sticky; top: 0; }
+      tr:hover td { background: #f4f8ff; }
+      .issue-key { color: var(--jira-blue); font-weight: 600; text-decoration: none; }
+      .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; background: #deebff; color: var(--jira-blue); }
+      .overlay { position: fixed; inset: 0; background: rgba(9, 30, 66, 0.35); display: none; align-items: center; justify-content: center; z-index: 20; }
+      .overlay.show { display: flex; }
+      .overlay-card { background: var(--surface); border-radius: var(--radius); padding: 24px 32px; text-align: center; box-shadow: 0 8px 24px rgba(9, 30, 66, 0.2); }
+    </style>
+  </head>
+  <body>
+    <div class="overlay" id="overlay">
+      <div class="overlay-card">Loading from Jira…</div>
+    </div>
+
+    <div class="app">
+      <header>
+        <div class="brand">
+          <div class="logo"><%= config.projectKey %></div>
+          <div>
+            <h1><%= config.appTitle %></h1>
+            <p class="subtitle">
+              <a href="<%= config.projectUrl %>" target="_blank" rel="noopener">
+                <%= config.jiraBaseUrl %> / <%= config.projectKey %>
+              </a>
+            </p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span class="chip" id="lastUpdated">Loading…</span>
+          <button class="refresh-btn" id="refreshBtn" type="button" data-state="loading">
+            <span>↻</span>
+            <span id="refreshLabel">Loading…</span>
+          </button>
+          <a class="link-btn" href="<%= config.projectUrl %>" target="_blank" rel="noopener">Open in Jira</a>
+        </div>
+      </header>
+
+      <div class="banner" id="errorBanner"></div>
+      <section class="kpis" id="kpis"></section>
+
+      <section class="charts">
+        <div class="chart-card"><h3>Open issues by status</h3><div id="chartStatus" class="chart"></div></div>
+        <div class="chart-card"><h3>Open issues by priority</h3><div id="chartPriority" class="chart"></div></div>
+        <div class="chart-card"><h3>Top assignees (open)</h3><div id="chartAssignee" class="chart"></div></div>
+        <div class="chart-card"><h3>Issue types (open)</h3><div id="chartType" class="chart"></div></div>
+        <div class="chart-card wide"><h3>Issues created per week (last 8 weeks)</h3><div id="chartCreated" class="chart"></div></div>
+      </section>
+
+      <section class="table-wrap">
+        <div class="table-head">
+          <h3>Open issues</h3>
+          <span class="chip" id="tableCount">0 issues</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Key</th><th>Summary</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Type</th><th>Updated</th></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <script>
+      const POLL_MS = <%= config.pollIntervalMs %>;
+      let clientVersion = null;
+      let pollTimer = null;
+
+      const els = {
+        overlay: document.getElementById('overlay'),
+        refreshBtn: document.getElementById('refreshBtn'),
+        refreshLabel: document.getElementById('refreshLabel'),
+        lastUpdated: document.getElementById('lastUpdated'),
+        errorBanner: document.getElementById('errorBanner'),
+        kpis: document.getElementById('kpis'),
+        tableBody: document.getElementById('tableBody'),
+        tableCount: document.getElementById('tableCount'),
+      };
+
+      google.charts.load('current', { packages: ['corechart', 'bar'] });
+      google.charts.setOnLoadCallback(init);
+
+      function init() {
+        els.refreshBtn.addEventListener('click', () => loadDashboard(true));
+        loadDashboard(false);
+        pollTimer = setInterval(checkServerVersion, POLL_MS);
+      }
+
+      function setRefreshState(state, label) {
+        els.refreshBtn.dataset.state = state;
+        els.refreshLabel.textContent = label;
+        els.refreshBtn.disabled = state === 'loading';
+      }
+
+      // Replaced google.script.run with fetch
+      function loadDashboard(forceRefresh) {
+        clearError();
+        setRefreshState('loading', forceRefresh ? 'Refreshing…' : 'Loading…');
+        if (!clientVersion) els.overlay.classList.add('show');
+
+        const url = forceRefresh ? '/api/data?force=true' : '/api/data';
+        
+        fetch(url, { headers: { Accept: 'application/json' } })
+          .then(async (res) => {
+            const text = await res.text();
+            const ctype = res.headers.get('content-type') || '';
+            if (ctype.includes('text/html') || text.trimStart().startsWith('<!')) {
+              throw new Error(
+                'Server returned HTML instead of JSON. Often this is an auth/login page or a proxy error — try opening the URL in a fresh tab while on VPN, or run: curl -H "Accept: application/json" ' + url
+              );
+            }
+            let data;
+            try {
+              data = JSON.parse(text);
+            } catch (e) {
+              throw new Error('Invalid JSON from server: ' + text.slice(0, 120));
+            }
+            if (!res.ok) {
+              throw new Error(data.error || `Failed to fetch dashboard data (${res.status})`);
+            }
+            if (data.error) throw new Error(data.error);
+            return data;
+          })
+          .then(onDataLoaded)
+          .catch(onFailure);
+      }
+
+      function onDataLoaded(data) {
+        els.overlay.classList.remove('show');
+        clientVersion = data.version;
+
+        els.lastUpdated.textContent = 'Updated ' + new Date(data.generatedAt).toLocaleString() + ' · ' + data.meta.openCount + ' open';
+        els.tableCount.textContent = data.openIssues.length + ' shown (top 100)';
+
+        renderKpis(data.summary);
+        renderCharts(data.charts);
+        renderTable(data.openIssues);
+        setRefreshState('current', 'Up to date');
+      }
+
+      function onFailure(err) {
+        els.overlay.classList.remove('show');
+        setRefreshState('stale', 'Retry');
+        showError(err.message || String(err));
+      }
+
+      function showError(msg) {
+        els.errorBanner.textContent = msg;
+        els.errorBanner.classList.add('show');
+      }
+
+      function clearError() {
+        els.errorBanner.classList.remove('show');
+      }
+
+      // Replaced google.script.run with fetch
+      function checkServerVersion() {
+        if (!clientVersion) return;
+        fetch('/api/version')
+          .then(res => res.ok ? res.json() : Promise.reject())
+          .then(info => {
+            if (info.version !== clientVersion) {
+              setRefreshState('stale', 'Jira updated — refresh');
+            } else if (els.refreshBtn.dataset.state !== 'loading') {
+              setRefreshState('current', 'Up to date');
+            }
+          })
+          .catch(() => {});
+      }
+
+      // --- Charting and Table Rendering logic remains untouched ---
+      function renderKpis(s) {
+        const items = [
+          { label: 'Open issues', value: s.totalOpen },
+          { label: 'Created (7d)', value: s.createdThisWeek },
+          { label: 'Resolved (7d)', value: s.resolvedThisWeek },
+          { label: 'Unassigned', value: s.unassigned },
+          { label: 'High priority open', value: s.highPriorityOpen },
+          { label: 'Avg open age (days)', value: s.avgOpenAgeDays },
+        ];
+        els.kpis.innerHTML = items.map(i => `<article class="kpi"><div class="label">${i.label}</div><div class="value">${i.value}</div></article>`).join('');
+      }
+
+      function renderCharts(charts) {
+        drawPie('chartStatus', charts.byStatus.items);
+        drawColumn('chartPriority', charts.byPriority.items);
+        drawBar('chartAssignee', charts.byAssignee.items);
+        drawPie('chartType', charts.byIssueType.items);
+        drawLine('chartCreated', charts.createdPerWeek.items);
+      }
+
+      function drawPie(id, items) {
+        const el = document.getElementById(id);
+        if (!items.length) { el.textContent = 'No data'; return; }
+        const data = google.visualization.arrayToDataTable([['Label', 'Count'], ...items.map(i => [i.label, i.count])]);
+        new google.visualization.PieChart(el).draw(data, pieOpts());
+      }
+
+      function drawColumn(id, items) {
+        const data = google.visualization.arrayToDataTable([['Label', 'Count'], ...items.map(i => [i.label, i.count])]);
+        new google.visualization.ColumnChart(document.getElementById(id)).draw(data, barOpts());
+      }
+
+      function drawBar(id, items) {
+        const data = google.visualization.arrayToDataTable([['Label', 'Count'], ...items.map(i => [i.label, i.count])]);
+        new google.visualization.BarChart(document.getElementById(id)).draw(data, Object.assign(barOpts(), { legend: { position: 'none' } }));
+      }
+
+      function drawLine(id, items) {
+        const data = google.visualization.arrayToDataTable([['Week', 'Created'], ...items.map(i => [i.label, i.count])]);
+        new google.visualization.LineChart(document.getElementById(id)).draw(data, lineOpts());
+      }
+
+      function barOpts() {
+        return {
+          backgroundColor: 'transparent', colors: ['#0052cc'],
+          chartArea: { left: 48, top: 20, width: '78%', height: '72%' },
+          hAxis: { textStyle: { color: '#5e6c84', fontSize: 11 } },
+          vAxis: { textStyle: { color: '#5e6c84', fontSize: 11 }, gridlines: { color: '#ebecf0' } },
+          legend: { position: 'bottom' }, animation: { startup: true, duration: 400 },
+        };
+      }
+
+      function pieOpts() {
+        return {
+          backgroundColor: 'transparent', pieHole: 0.45,
+          colors: ['#0052cc', '#00b8d9', '#6554c0', '#ff5630', '#ffab00', '#36b37e'],
+          chartArea: { left: 10, top: 16, width: '90%', height: '80%' },
+          legend: { position: 'right', textStyle: { fontSize: 11 } }, animation: { startup: true, duration: 400 },
+        };
+      }
+
+      function lineOpts() { return Object.assign(barOpts(), { colors: ['#2684ff'], pointSize: 5 }); }
+
+      function renderTable(issues) {
+        els.tableBody.innerHTML = issues.map(i => {
+          const updated = i.updated ? new Date(i.updated).toLocaleDateString() : '—';
+          return `<tr>
+            <td><a class="issue-key" href="${escapeAttr(i.url)}" target="_blank" rel="noopener">${escapeHtml(i.key)}</a></td>
+            <td>${escapeHtml(i.summary)}</td>
+            <td><span class="badge">${escapeHtml(i.status)}</span></td>
+            <td>${escapeHtml(i.priority)}</td>
+            <td>${escapeHtml(i.assignee)}</td>
+            <td>${escapeHtml(i.issueType)}</td>
+            <td>${updated}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+      function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+    </script>
+  </body>
+</html>

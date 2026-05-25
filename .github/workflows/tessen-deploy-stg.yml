@@ -1,0 +1,36 @@
+name: Deploy to stg
+on:
+  workflow_dispatch: # Allow manual runs
+jobs:
+  build-and-push-containers:
+    name: "Build and Push Containers"
+    runs-on: unity-linux-runner
+    container:
+      image: europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/tessen/dind:latest
+    env:
+      TESSEN_TOKEN: ${{ secrets.TESSEN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check if Tessen Token is available
+        run: bash -c '[ -z "${TESSEN_TOKEN}" ] && echo "Missing TESSEN_TOKEN environment variable, please provide it following instructions at https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/#tokens-for-ci" && exit 1; exit 0;'
+      - name: Setup docker config
+        run: tessen docker config
+      - name: Build and Push Containers
+        run: bash scripts/build-and-push.sh
+  deploy-app-with-tessen:
+    name: Deploy
+    needs: [build-and-push-containers]
+    runs-on: unity-linux-runner
+    container:
+      image: europe-docker.pkg.dev/unity-cds-services-prd/ds-docker/tessen/dind:latest
+    env:
+      TESSEN_TOKEN: ${{ secrets.TESSEN_TOKEN }}
+      REPLICAS: "2"
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check if Tessen Token is available
+        run: bash -c '[ -z "${TESSEN_TOKEN}" ] && echo "Missing TESSEN_TOKEN environment variable, please provide it following instructions at https://developer.portal.internal.unity.com/docs/default/component/tessen/usage/ci-deploy/#tokens-for-ci" && exit 1; exit 0;'
+      - name: Deploy
+        run: bash scripts/tessen-deploy.sh
+        env:
+          CLUSTER: stg
